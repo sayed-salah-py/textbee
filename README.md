@@ -92,18 +92,11 @@ curl -X GET "https://api.textbee.dev/api/v1/gateway/devices/YOUR_DEVICE_ID/get-r
 1. **Install MongoDB on Your Server**: Follow the official MongoDB installation guide for your operating system.
 2. **Using MongoDB Atlas**: Alternatively, you can create a free database on MongoDB Atlas. Sign up at [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) and follow the instructions to set up your database.
 
-### Firebase Setup
-
-1. Create a Firebase project.
-2. Enable Firebase Cloud Messaging (FCM) in your Firebase project.
-3. Obtain the Firebase credentials for backend use and the Android app.
-
 ### Building the Android App
 
 1. Clone the repository and navigate to the Android project directory.
-2. Update the `google-services.json` file with your Firebase project configuration.
-3. Update every occurrence of `textbee.dev` with your own domain in the project.
-4. Build the app using Android Studio or the command line:
+2. Update every occurrence of `textbee.dev` with your own domain in the project.
+3. Build the app using Android Studio or the command line:
    ```bash
    ./gradlew assembleRelease
    ```

@@ -24,21 +24,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SMSGateway"
-        android:usesCleartextTraffic="true" >
+        android:usesCleartextTraffic="false" >
 
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
             tools:node="remove" />
         
-        <service
-            android:name=".services.FCMService"
-            android:exported="false"
-            android:directBootAware="true">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
         <service
             android:name=".services.StickyNotificationService"
             android:enabled="true"

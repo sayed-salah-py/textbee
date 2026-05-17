@@ -271,18 +271,37 @@
                             android:textIsSelectable="true" />
                     </com.google.android.material.textfield.TextInputLayout>
 
-                    <EditText
-                        android:id="@+id/fcmTokenEditText"
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:hint="API Endpoint (HTTPS)"
+                        app:boxBackgroundColor="@android:color/transparent"
+                        app:boxStrokeColor="?attr/colorPrimary"
+                        app:hintTextColor="?attr/colorPrimary"
+                        app:helperText="Must start with https:// and include the API base path"
+                        app:helperTextTextColor="@color/text_secondary">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/apiBaseUrlEditText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="textUri"
+                            android:textColor="@color/text_primary"
+                            android:textIsSelectable="true" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <Button
+                        android:id="@+id/saveApiBaseUrlBtn"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:ems="10"
-                        android:enabled="false"
-                        android:gravity="start|top"
-                        android:hint="FCM Token"
-                        android:inputType="textMultiLine"
-                        android:textColor="@color/text_primary"
-                        android:textColorHint="@color/text_secondary"
-                        android:visibility="gone" />
+                        android:layout_marginBottom="16dp"
+                        android:text="Save Endpoint"
+                        android:textColor="?attr/colorPrimary"
+                        android:textSize="14sp"
+                        android:letterSpacing="0.01"
+                        android:backgroundTint="@android:color/transparent"
+                        style="@style/Widget.MaterialComponents.Button.TextButton" />
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -633,7 +652,7 @@
                             android:id="@+id/dashboardLinkText"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="Go to https://textbee.dev/dashboard"
+                            android:text="Go to your dashboard URL"
                             android:textColor="?attr/colorPrimary"
                             android:autoLink="web"
                             android:linksClickable="true"

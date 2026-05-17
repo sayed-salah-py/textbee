@@ -59,7 +59,7 @@ public class SMSReceivedWorker extends Worker {
         SMSDTO smsDTO = new Gson().fromJson(smsDtoJson, SMSDTO.class);
         
         try {
-            Call<SMSForwardResponseDTO> call = ApiManager.getApiService().sendReceivedSMS(deviceId, apiKey, smsDTO);
+            Call<SMSForwardResponseDTO> call = ApiManager.getApiService(getApplicationContext()).sendReceivedSMS(deviceId, apiKey, smsDTO);
             Response<SMSForwardResponseDTO> response = call.execute();
             
             if (response.isSuccessful()) {

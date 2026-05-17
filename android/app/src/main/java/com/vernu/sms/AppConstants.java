@@ -3,7 +3,9 @@ package com.vernu.sms;
 import android.Manifest;
 
 public class AppConstants {
-    public static final String API_BASE_URL = BuildConfig.API_BASE_URL;
+    public static final String DEFAULT_API_BASE_URL = BuildConfig.API_BASE_URL;
+    public static final String SHARED_PREFS_API_BASE_URL_KEY = "API_BASE_URL";
+    public static final String[] API_BASE_URL_HOST_ALLOWLIST = new String[]{};
     public static final String[] requiredPermissions = new String[]{
             Manifest.permission.SEND_SMS,
             Manifest.permission.READ_SMS,

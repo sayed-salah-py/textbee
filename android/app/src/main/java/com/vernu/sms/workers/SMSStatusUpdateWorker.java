@@ -59,7 +59,7 @@ public class SMSStatusUpdateWorker extends Worker {
         SMSDTO smsDTO = new Gson().fromJson(smsDtoJson, SMSDTO.class);
         
         try {
-            Call<SMSForwardResponseDTO> call = ApiManager.getApiService().updateSMSStatus(deviceId, apiKey, smsDTO);
+            Call<SMSForwardResponseDTO> call = ApiManager.getApiService(getApplicationContext()).updateSMSStatus(deviceId, apiKey, smsDTO);
             Response<SMSForwardResponseDTO> response = call.execute();
             
             if (response.isSuccessful()) {

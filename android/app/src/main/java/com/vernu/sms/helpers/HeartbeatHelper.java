@@ -10,7 +10,6 @@ import android.os.StatFs;
 import android.os.SystemClock;
 import android.util.Log;
 
-import com.google.firebase.messaging.FirebaseMessaging;
 import com.vernu.sms.ApiManager;
 import com.vernu.sms.AppConstants;
 import com.vernu.sms.BuildConfig;
@@ -23,8 +22,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.TimeZone;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 import retrofit2.Call;
 import retrofit2.Response;
@@ -55,24 +52,6 @@ public class HeartbeatHelper {
         HeartbeatInputDTO heartbeatInput = new HeartbeatInputDTO();
 
         try {
-            // Get FCM token (blocking wait)
-            try {
-                CountDownLatch latch = new CountDownLatch(1);
-                final String[] fcmToken = new String[1];
-                FirebaseMessaging.getInstance().getToken().addOnCompleteListener(task -> {
-                    if (task.isSuccessful()) {
-                        fcmToken[0] = task.getResult();
-                    }
-                    latch.countDown();
-                });
-                if (latch.await(5, TimeUnit.SECONDS) && fcmToken[0] != null) {
-                    heartbeatInput.setFcmToken(fcmToken[0]);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Failed to get FCM token: " + e.getMessage());
-                // Continue without FCM token
-            }
-
             // Get battery information
             IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
             Intent batteryStatus = context.registerReceiver(null, ifilter);
@@ -153,7 +132,7 @@ public class HeartbeatHelper {
             heartbeatInput.setSimInfo(simInfoCollection);
 
             // Send heartbeat request
-            Call<HeartbeatResponseDTO> call = ApiManager.getApiService().heartbeat(deviceId, apiKey, heartbeatInput);
+            Call<HeartbeatResponseDTO> call = ApiManager.getApiService(context).heartbeat(deviceId, apiKey, heartbeatInput);
             Response<HeartbeatResponseDTO> response = call.execute();
 
             if (response.isSuccessful() && response.body() != null) {

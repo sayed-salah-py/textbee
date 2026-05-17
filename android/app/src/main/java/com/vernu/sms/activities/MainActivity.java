@@ -25,7 +25,6 @@ import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 import com.google.android.material.snackbar.Snackbar;
-import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
 import com.vernu.sms.ApiManager;
@@ -37,9 +36,9 @@ import com.vernu.sms.dtos.RegisterDeviceInputDTO;
 import com.vernu.sms.dtos.RegisterDeviceResponseDTO;
 import com.vernu.sms.dtos.SimInfoCollectionDTO;
 import com.vernu.sms.helpers.SharedPreferenceHelper;
+import com.vernu.sms.helpers.ApiEndpointHelper;
 import com.vernu.sms.helpers.VersionTracker;
 import com.vernu.sms.helpers.HeartbeatManager;
-import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import com.google.gson.Gson;
 import okhttp3.ResponseBody;
 import java.io.IOException;
@@ -53,10 +52,10 @@ public class MainActivity extends AppCompatActivity {
 
     private Context mContext;
     private Switch gatewaySwitch, receiveSMSSwitch, stickyNotificationSwitch;
-    private EditText apiKeyEditText, fcmTokenEditText, deviceIdEditText, deviceNameEditText, smsSendDelayEditText;
-    private Button registerDeviceBtn, grantSMSPermissionBtn, scanQRBtn, checkUpdatesBtn, configureFilterBtn;
+    private EditText apiKeyEditText, deviceIdEditText, deviceNameEditText, smsSendDelayEditText, apiBaseUrlEditText;
+    private Button registerDeviceBtn, grantSMSPermissionBtn, scanQRBtn, checkUpdatesBtn, configureFilterBtn, saveApiBaseUrlBtn;
     private ImageButton copyDeviceIdImgBtn;
-    private TextView deviceBrandAndModelTxt, deviceIdTxt, appVersionNameTxt, appVersionCodeTxt;
+    private TextView deviceBrandAndModelTxt, deviceIdTxt, appVersionNameTxt, appVersionCodeTxt, dashboardLinkText;
     private RadioGroup defaultSimSlotRadioGroup;
     private static final int SCAN_QR_REQUEST_CODE = 49374;
     private static final int PERMISSION_REQUEST_CODE = 0;
@@ -77,9 +76,10 @@ public class MainActivity extends AppCompatActivity {
         receiveSMSSwitch = findViewById(R.id.receiveSMSSwitch);
         stickyNotificationSwitch = findViewById(R.id.stickyNotificationSwitch);
         apiKeyEditText = findViewById(R.id.apiKeyEditText);
-        fcmTokenEditText = findViewById(R.id.fcmTokenEditText);
         deviceIdEditText = findViewById(R.id.deviceIdEditText);
         deviceNameEditText = findViewById(R.id.deviceNameEditText);
+        apiBaseUrlEditText = findViewById(R.id.apiBaseUrlEditText);
+        saveApiBaseUrlBtn = findViewById(R.id.saveApiBaseUrlBtn);
         registerDeviceBtn = findViewById(R.id.registerDeviceBtn);
         grantSMSPermissionBtn = findViewById(R.id.grantSMSPermissionBtn);
         scanQRBtn = findViewById(R.id.scanQRButton);
@@ -89,6 +89,7 @@ public class MainActivity extends AppCompatActivity {
         defaultSimSlotRadioGroup = findViewById(R.id.defaultSimSlotRadioGroup);
         appVersionNameTxt = findViewById(R.id.appVersionNameTxt);
         appVersionCodeTxt = findViewById(R.id.appVersionCodeTxt);
+        dashboardLinkText = findViewById(R.id.dashboardLinkText);
         checkUpdatesBtn = findViewById(R.id.checkUpdatesBtn);
         configureFilterBtn = findViewById(R.id.configureFilterBtn);
         smsSendDelayEditText = findViewById(R.id.smsSendDelayEditText);
@@ -108,13 +109,6 @@ public class MainActivity extends AppCompatActivity {
             VersionTracker.reportVersionToServer(mContext);
         }
         
-        // Initialize Crashlytics with user information
-        FirebaseCrashlytics crashlytics = FirebaseCrashlytics.getInstance();
-        crashlytics.setCustomKey("device_id", deviceId != null ? deviceId : "not_registered");
-        crashlytics.setCustomKey("device_model", Build.MODEL);
-        crashlytics.setCustomKey("app_version", versionName);
-        crashlytics.setCustomKey("app_version_code", BuildConfig.VERSION_CODE);
-
         // Start sticky notification service if enabled
         boolean gatewayEnabled = SharedPreferenceHelper.getSharedPreferenceBoolean(mContext, AppConstants.SHARED_PREFS_GATEWAY_ENABLED_KEY, false);
         boolean stickyNotificationEnabled = SharedPreferenceHelper.getSharedPreferenceBoolean(mContext, AppConstants.SHARED_PREFS_STICKY_NOTIFICATION_ENABLED_KEY, false);
@@ -162,6 +156,13 @@ public class MainActivity extends AppCompatActivity {
         } else {
             deviceNameEditText.setText(storedDeviceName);
         }
+        apiBaseUrlEditText.setText(ApiEndpointHelper.getApiBaseUrl(mContext));
+        saveApiBaseUrlBtn.setOnClickListener(view -> saveApiBaseUrl());
+        apiBaseUrlEditText.setOnEditorActionListener((v, actionId, event) -> {
+            saveApiBaseUrl();
+            return false;
+        });
+        updateDashboardLink();
         gatewaySwitch.setChecked(SharedPreferenceHelper.getSharedPreferenceBoolean(mContext, AppConstants.SHARED_PREFS_GATEWAY_ENABLED_KEY, false));
         gatewaySwitch.setOnCheckedChangeListener((compoundButton, isCheked) -> {
             View view = compoundButton.getRootView();
@@ -173,7 +174,7 @@ public class MainActivity extends AppCompatActivity {
             registerDeviceInput.setAppVersionCode(BuildConfig.VERSION_CODE);
             registerDeviceInput.setAppVersionName(BuildConfig.VERSION_NAME);
 
-            Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService().updateDevice(deviceId, key, registerDeviceInput);
+            Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService(mContext).updateDevice(deviceId, key, registerDeviceInput);
             apiCall.enqueue(new Callback<RegisterDeviceResponseDTO>() {
                 @Override
                 public void onResponse(Call<RegisterDeviceResponseDTO> call, Response<RegisterDeviceResponseDTO> response) {
@@ -246,7 +247,9 @@ public class MainActivity extends AppCompatActivity {
         });
         scanQRBtn.setOnClickListener(view -> {
             IntentIntegrator intentIntegrator = new IntentIntegrator(MainActivity.this);
-            intentIntegrator.setPrompt("Go to textbee.dev/dashboard and click Register Device to generate QR Code");
+            String baseOrigin = getApiBaseOrigin();
+            String dashboardUrl = baseOrigin != null ? baseOrigin + "/dashboard" : "your dashboard URL";
+            intentIntegrator.setPrompt("Go to " + dashboardUrl + " and click Register Device to generate QR Code");
             intentIntegrator.setRequestCode(SCAN_QR_REQUEST_CODE);
             intentIntegrator.initiateScan();
         });
@@ -254,7 +257,12 @@ public class MainActivity extends AppCompatActivity {
         checkUpdatesBtn.setOnClickListener(view -> {
             String versionInfo = BuildConfig.VERSION_NAME + "(" + BuildConfig.VERSION_CODE + ")";
             String encodedVersionInfo = android.net.Uri.encode(versionInfo);
-            String downloadUrl = "https://textbee.dev/download?currentVersion=" + encodedVersionInfo;
+            String baseOrigin = getApiBaseOrigin();
+            if (baseOrigin == null) {
+                Snackbar.make(view, "Invalid API endpoint for update URL", Snackbar.LENGTH_LONG).show();
+                return;
+            }
+            String downloadUrl = baseOrigin + "/download?currentVersion=" + encodedVersionInfo;
             Intent browserIntent = new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(downloadUrl));
             startActivity(browserIntent);
         });
@@ -320,6 +328,53 @@ public class MainActivity extends AppCompatActivity {
             SharedPreferenceHelper.setSharedPreferenceInt(mContext, AppConstants.SHARED_PREFS_SMS_SEND_DELAY_SECONDS_KEY, defaultDelay);
             Snackbar.make(smsSendDelayEditText, "Invalid value. Reset to " + defaultDelay + " sec.", Snackbar.LENGTH_SHORT).show();
         }
+    }
+
+    private void saveApiBaseUrl() {
+        String input = apiBaseUrlEditText.getText().toString().trim();
+        if (input.isEmpty()) {
+            String defaultUrl = ApiEndpointHelper.normalizeApiBaseUrl(AppConstants.DEFAULT_API_BASE_URL);
+            apiBaseUrlEditText.setText(defaultUrl);
+            SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_API_BASE_URL_KEY, defaultUrl);
+            ApiManager.clearCachedApiService();
+            updateDashboardLink();
+            Snackbar.make(apiBaseUrlEditText, "API endpoint reset to default", Snackbar.LENGTH_SHORT).show();
+            return;
+        }
+
+        String normalized = ApiEndpointHelper.normalizeApiBaseUrl(input);
+        if (!ApiEndpointHelper.isValidApiBaseUrl(normalized)) {
+            Snackbar.make(apiBaseUrlEditText, "Invalid API endpoint. Use https:// with a valid host.", Snackbar.LENGTH_LONG).show();
+            return;
+        }
+
+        SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_API_BASE_URL_KEY, normalized);
+        ApiManager.clearCachedApiService();
+        apiBaseUrlEditText.setText(normalized);
+        updateDashboardLink();
+        Snackbar.make(apiBaseUrlEditText, "API endpoint saved", Snackbar.LENGTH_SHORT).show();
+    }
+
+    private void updateDashboardLink() {
+        if (dashboardLinkText == null) {
+            return;
+        }
+        String baseOrigin = getApiBaseOrigin();
+        if (baseOrigin == null) {
+            return;
+        }
+        dashboardLinkText.setText("Go to " + baseOrigin + "/dashboard");
+    }
+
+    @Nullable
+    private String getApiBaseOrigin() {
+        String baseUrl = ApiEndpointHelper.getApiBaseUrl(mContext);
+        android.net.Uri uri = android.net.Uri.parse(baseUrl);
+        if (uri.getScheme() == null || uri.getHost() == null) {
+            return null;
+        }
+        String port = uri.getPort() > -1 ? ":" + uri.getPort() : "";
+        return uri.getScheme() + "://" + uri.getHost() + port;
     }
 
     private void renderAvailableSimOptions() {
@@ -475,174 +530,162 @@ public class MainActivity extends AppCompatActivity {
         registerDeviceBtn.setText("Loading...");
         View view = findViewById(R.id.registerDeviceBtn);
 
-        FirebaseMessaging.getInstance().getToken()
-                .addOnCompleteListener(task -> {
-                    if (!task.isSuccessful()) {
-                        Snackbar.make(view, "Failed to obtain FCM Token :(", Snackbar.LENGTH_LONG).show();
+        RegisterDeviceInputDTO registerDeviceInput = new RegisterDeviceInputDTO();
+        registerDeviceInput.setEnabled(true);
+        registerDeviceInput.setBrand(Build.BRAND);
+        registerDeviceInput.setManufacturer(Build.MANUFACTURER);
+        registerDeviceInput.setModel(Build.MODEL);
+        registerDeviceInput.setBuildId(Build.ID);
+        registerDeviceInput.setOs(Build.VERSION.BASE_OS);
+        registerDeviceInput.setAppVersionCode(BuildConfig.VERSION_CODE);
+        registerDeviceInput.setAppVersionName(BuildConfig.VERSION_NAME);
+                    
+        // Get device name from input field or default to "brand model"
+        String deviceName = deviceNameEditText.getText().toString().trim();
+        if (deviceName.isEmpty()) {
+            deviceName = Build.BRAND + " " + Build.MODEL;
+        }
+        registerDeviceInput.setName(deviceName);
+                    
+        // Collect SIM information
+        SimInfoCollectionDTO simInfoCollection = new SimInfoCollectionDTO();
+        simInfoCollection.setLastUpdated(System.currentTimeMillis());
+        simInfoCollection.setSims(TextBeeUtils.collectSimInfo(mContext));
+        registerDeviceInput.setSimInfo(simInfoCollection);
+                    
+        // If the user provided a device ID, use it for updating instead of creating new
+        if (!deviceIdInput.isEmpty()) {
+            Log.d(TAG, "Updating device with deviceId: "+ deviceIdInput);
+            Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService(mContext).updateDevice(deviceIdInput, newKey, registerDeviceInput);
+            apiCall.enqueue(new Callback<RegisterDeviceResponseDTO>() {
+                @Override
+                public void onResponse(Call<RegisterDeviceResponseDTO> call, Response<RegisterDeviceResponseDTO> response) {
+                    Log.d(TAG, response.toString());
+                    if (!response.isSuccessful()) {
+                        Snackbar.make(view, extractErrorMessage(response), Snackbar.LENGTH_LONG).show();
                         registerDeviceBtn.setEnabled(true);
                         registerDeviceBtn.setText("Update");
                         return;
                     }
-                    String token = task.getResult();
-                    fcmTokenEditText.setText(token);
+                    SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_API_KEY_KEY, newKey);
+                    Snackbar.make(view, "Device Updated Successfully :)", Snackbar.LENGTH_LONG).show();
 
-                    RegisterDeviceInputDTO registerDeviceInput = new RegisterDeviceInputDTO();
-                    registerDeviceInput.setEnabled(true);
-                    registerDeviceInput.setFcmToken(token);
-                    registerDeviceInput.setBrand(Build.BRAND);
-                    registerDeviceInput.setManufacturer(Build.MANUFACTURER);
-                    registerDeviceInput.setModel(Build.MODEL);
-                    registerDeviceInput.setBuildId(Build.ID);
-                    registerDeviceInput.setOs(Build.VERSION.BASE_OS);
-                    registerDeviceInput.setAppVersionCode(BuildConfig.VERSION_CODE);
-                    registerDeviceInput.setAppVersionName(BuildConfig.VERSION_NAME);
-                    
-                    // Get device name from input field or default to "brand model"
-                    String deviceName = deviceNameEditText.getText().toString().trim();
-                    if (deviceName.isEmpty()) {
-                        deviceName = Build.BRAND + " " + Build.MODEL;
-                    }
-                    registerDeviceInput.setName(deviceName);
-                    
-                    // Collect SIM information
-                    SimInfoCollectionDTO simInfoCollection = new SimInfoCollectionDTO();
-                    simInfoCollection.setLastUpdated(System.currentTimeMillis());
-                    simInfoCollection.setSims(TextBeeUtils.collectSimInfo(mContext));
-                    registerDeviceInput.setSimInfo(simInfoCollection);
-                    
-                    // If the user provided a device ID, use it for updating instead of creating new
-                    if (!deviceIdInput.isEmpty()) {
-                        Log.d(TAG, "Updating device with deviceId: "+ deviceIdInput);
-                        Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService().updateDevice(deviceIdInput, newKey, registerDeviceInput);
-                        apiCall.enqueue(new Callback<RegisterDeviceResponseDTO>() {
-                            @Override
-                            public void onResponse(Call<RegisterDeviceResponseDTO> call, Response<RegisterDeviceResponseDTO> response) {
-                                Log.d(TAG, response.toString());
-                                if (!response.isSuccessful()) {
-                                    Snackbar.make(view, extractErrorMessage(response), Snackbar.LENGTH_LONG).show();
-                                    registerDeviceBtn.setEnabled(true);
-                                    registerDeviceBtn.setText("Update");
-                                    return;
-                                }
-                                SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_API_KEY_KEY, newKey);
-                                Snackbar.make(view, "Device Updated Successfully :)", Snackbar.LENGTH_LONG).show();
-                                
-                                // Update deviceId from response if available
-                                if (response.body() != null && response.body().data != null && response.body().data.get("_id") != null) {
-                                    deviceId = response.body().data.get("_id").toString();
-                                    deviceIdTxt.setText(deviceId);
-                                    deviceIdEditText.setText(deviceId);
-                                    SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_ID_KEY, deviceId);
-                                    SharedPreferenceHelper.setSharedPreferenceBoolean(mContext, AppConstants.SHARED_PREFS_GATEWAY_ENABLED_KEY, registerDeviceInput.isEnabled());
-                                    gatewaySwitch.setChecked(registerDeviceInput.isEnabled());
-                                    
-                                    // Sync heartbeatIntervalMinutes from server response
-                                    if (response.body().data.get("heartbeatIntervalMinutes") != null) {
-                                        Object intervalObj = response.body().data.get("heartbeatIntervalMinutes");
-                                        if (intervalObj instanceof Number) {
-                                            int intervalMinutes = ((Number) intervalObj).intValue();
-                                            SharedPreferenceHelper.setSharedPreferenceInt(mContext, AppConstants.SHARED_PREFS_HEARTBEAT_INTERVAL_MINUTES_KEY, intervalMinutes);
-                                            Log.d(TAG, "Synced heartbeat interval from server: " + intervalMinutes + " minutes");
-                                        }
-                                    }
-                                    
-                                    // Sync device name from server response
-                                    if (response.body().data.get("name") != null) {
-                                        String deviceName = response.body().data.get("name").toString();
-                                        SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_NAME_KEY, deviceName);
-                                        deviceNameEditText.setText(deviceName);
-                                        Log.d(TAG, "Synced device name from server: " + deviceName);
-                                    }
-                                    
-                                    // Schedule heartbeat if device is enabled
-                                    if (registerDeviceInput.isEnabled()) {
-                                        HeartbeatManager.scheduleHeartbeat(mContext);
-                                    }
-                                }
-                                
-                                // Update stored version information
-                                VersionTracker.updateStoredVersion(mContext);
-                                
-                                registerDeviceBtn.setEnabled(true);
-                                registerDeviceBtn.setText("Update");
+                    // Update deviceId from response if available
+                    if (response.body() != null && response.body().data != null && response.body().data.get("_id") != null) {
+                        deviceId = response.body().data.get("_id").toString();
+                        deviceIdTxt.setText(deviceId);
+                        deviceIdEditText.setText(deviceId);
+                        SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_ID_KEY, deviceId);
+                        SharedPreferenceHelper.setSharedPreferenceBoolean(mContext, AppConstants.SHARED_PREFS_GATEWAY_ENABLED_KEY, registerDeviceInput.isEnabled());
+                        gatewaySwitch.setChecked(registerDeviceInput.isEnabled());
+
+                        // Sync heartbeatIntervalMinutes from server response
+                        if (response.body().data.get("heartbeatIntervalMinutes") != null) {
+                            Object intervalObj = response.body().data.get("heartbeatIntervalMinutes");
+                            if (intervalObj instanceof Number) {
+                                int intervalMinutes = ((Number) intervalObj).intValue();
+                                SharedPreferenceHelper.setSharedPreferenceInt(mContext, AppConstants.SHARED_PREFS_HEARTBEAT_INTERVAL_MINUTES_KEY, intervalMinutes);
+                                Log.d(TAG, "Synced heartbeat interval from server: " + intervalMinutes + " minutes");
                             }
-                            
-                            @Override
-                            public void onFailure(Call<RegisterDeviceResponseDTO> call, Throwable t) {
-                                Snackbar.make(view, "An error occurred :(", Snackbar.LENGTH_LONG).show();
-                                Log.e(TAG, "API_ERROR "+ t.getMessage());
-                                Log.e(TAG, "API_ERROR "+ t.getLocalizedMessage());
-                                TextBeeUtils.logException(t, "Error registering device");
-                                registerDeviceBtn.setEnabled(true);
-                                registerDeviceBtn.setText("Update");
-                            }
-                        });
-                        return;
+                        }
+
+                        // Sync device name from server response
+                        if (response.body().data.get("name") != null) {
+                            String deviceName = response.body().data.get("name").toString();
+                            SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_NAME_KEY, deviceName);
+                            deviceNameEditText.setText(deviceName);
+                            Log.d(TAG, "Synced device name from server: " + deviceName);
+                        }
+
+                        // Schedule heartbeat if device is enabled
+                        if (registerDeviceInput.isEnabled()) {
+                            HeartbeatManager.scheduleHeartbeat(mContext);
+                        }
                     }
 
-                    Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService().registerDevice(newKey, registerDeviceInput);
-                        apiCall.enqueue(new Callback<RegisterDeviceResponseDTO>() {
-                            @Override
-                            public void onResponse(Call<RegisterDeviceResponseDTO> call, Response<RegisterDeviceResponseDTO> response) {
-                                Log.d(TAG, response.toString());
-                                if (!response.isSuccessful()) {
-                                    Snackbar.make(view, extractErrorMessage(response), Snackbar.LENGTH_LONG).show();
-                                    registerDeviceBtn.setEnabled(true);
-                                    registerDeviceBtn.setText("Update");
-                                    return;
-                                }
-                                SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_API_KEY_KEY, newKey);
-                                Snackbar.make(view, "Device Registration Successful :)", Snackbar.LENGTH_LONG).show();
-                            
-                            if (response.body() != null && response.body().data != null && response.body().data.get("_id") != null) {
-                                deviceId = response.body().data.get("_id").toString();
-                                deviceIdTxt.setText(deviceId);
-                                deviceIdEditText.setText(deviceId);
-                                SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_ID_KEY, deviceId);
-                                SharedPreferenceHelper.setSharedPreferenceBoolean(mContext, AppConstants.SHARED_PREFS_GATEWAY_ENABLED_KEY, registerDeviceInput.isEnabled());
-                                gatewaySwitch.setChecked(registerDeviceInput.isEnabled());
-                                
-                                // Sync heartbeatIntervalMinutes from server response
-                                if (response.body().data.get("heartbeatIntervalMinutes") != null) {
-                                    Object intervalObj = response.body().data.get("heartbeatIntervalMinutes");
-                                    if (intervalObj instanceof Number) {
-                                        int intervalMinutes = ((Number) intervalObj).intValue();
-                                        SharedPreferenceHelper.setSharedPreferenceInt(mContext, AppConstants.SHARED_PREFS_HEARTBEAT_INTERVAL_MINUTES_KEY, intervalMinutes);
-                                        Log.d(TAG, "Synced heartbeat interval from server: " + intervalMinutes + " minutes");
-                                    }
-                                }
-                                
-                                // Sync device name from server response
-                                if (response.body().data.get("name") != null) {
-                                    String deviceName = response.body().data.get("name").toString();
-                                    SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_NAME_KEY, deviceName);
-                                    deviceNameEditText.setText(deviceName);
-                                    Log.d(TAG, "Synced device name from server: " + deviceName);
-                                }
-                                
-                                // Schedule heartbeat if device is enabled
-                                if (registerDeviceInput.isEnabled()) {
-                                    HeartbeatManager.scheduleHeartbeat(mContext);
-                                }
-                            }
-                            
-                            // Update stored version information
-                            VersionTracker.updateStoredVersion(mContext);
-                            
-                            registerDeviceBtn.setEnabled(true);
-                            registerDeviceBtn.setText("Update");
+                    // Update stored version information
+                    VersionTracker.updateStoredVersion(mContext);
+
+                    registerDeviceBtn.setEnabled(true);
+                    registerDeviceBtn.setText("Update");
+                }
+
+                @Override
+                public void onFailure(Call<RegisterDeviceResponseDTO> call, Throwable t) {
+                    Snackbar.make(view, "An error occurred :(", Snackbar.LENGTH_LONG).show();
+                    Log.e(TAG, "API_ERROR "+ t.getMessage());
+                    Log.e(TAG, "API_ERROR "+ t.getLocalizedMessage());
+                    TextBeeUtils.logException(t, "Error registering device");
+                    registerDeviceBtn.setEnabled(true);
+                    registerDeviceBtn.setText("Update");
+                }
+            });
+            return;
+        }
+
+        Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService(mContext).registerDevice(newKey, registerDeviceInput);
+        apiCall.enqueue(new Callback<RegisterDeviceResponseDTO>() {
+            @Override
+            public void onResponse(Call<RegisterDeviceResponseDTO> call, Response<RegisterDeviceResponseDTO> response) {
+                Log.d(TAG, response.toString());
+                if (!response.isSuccessful()) {
+                    Snackbar.make(view, extractErrorMessage(response), Snackbar.LENGTH_LONG).show();
+                    registerDeviceBtn.setEnabled(true);
+                    registerDeviceBtn.setText("Update");
+                    return;
+                }
+                SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_API_KEY_KEY, newKey);
+                Snackbar.make(view, "Device Registration Successful :)", Snackbar.LENGTH_LONG).show();
+
+                if (response.body() != null && response.body().data != null && response.body().data.get("_id") != null) {
+                    deviceId = response.body().data.get("_id").toString();
+                    deviceIdTxt.setText(deviceId);
+                    deviceIdEditText.setText(deviceId);
+                    SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_ID_KEY, deviceId);
+                    SharedPreferenceHelper.setSharedPreferenceBoolean(mContext, AppConstants.SHARED_PREFS_GATEWAY_ENABLED_KEY, registerDeviceInput.isEnabled());
+                    gatewaySwitch.setChecked(registerDeviceInput.isEnabled());
+
+                    // Sync heartbeatIntervalMinutes from server response
+                    if (response.body().data.get("heartbeatIntervalMinutes") != null) {
+                        Object intervalObj = response.body().data.get("heartbeatIntervalMinutes");
+                        if (intervalObj instanceof Number) {
+                            int intervalMinutes = ((Number) intervalObj).intValue();
+                            SharedPreferenceHelper.setSharedPreferenceInt(mContext, AppConstants.SHARED_PREFS_HEARTBEAT_INTERVAL_MINUTES_KEY, intervalMinutes);
+                            Log.d(TAG, "Synced heartbeat interval from server: " + intervalMinutes + " minutes");
                         }
-                        @Override
-                        public void onFailure(Call<RegisterDeviceResponseDTO> call, Throwable t) {
-                            Snackbar.make(view, "An error occurred :(", Snackbar.LENGTH_LONG).show();
-                            Log.e(TAG, "API_ERROR "+ t.getMessage());
-                            Log.e(TAG, "API_ERROR "+ t.getLocalizedMessage());
-                            TextBeeUtils.logException(t, "Error registering device");
-                            registerDeviceBtn.setEnabled(true);
-                            registerDeviceBtn.setText("Update");
-                        }
-                    });
-                });
+                    }
+
+                    // Sync device name from server response
+                    if (response.body().data.get("name") != null) {
+                        String deviceName = response.body().data.get("name").toString();
+                        SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_NAME_KEY, deviceName);
+                        deviceNameEditText.setText(deviceName);
+                        Log.d(TAG, "Synced device name from server: " + deviceName);
+                    }
+
+                    // Schedule heartbeat if device is enabled
+                    if (registerDeviceInput.isEnabled()) {
+                        HeartbeatManager.scheduleHeartbeat(mContext);
+                    }
+                }
+
+                // Update stored version information
+                VersionTracker.updateStoredVersion(mContext);
+
+                registerDeviceBtn.setEnabled(true);
+                registerDeviceBtn.setText("Update");
+            }
+
+            @Override
+            public void onFailure(Call<RegisterDeviceResponseDTO> call, Throwable t) {
+                Snackbar.make(view, "An error occurred :(", Snackbar.LENGTH_LONG).show();
+                Log.e(TAG, "API_ERROR "+ t.getMessage());
+                Log.e(TAG, "API_ERROR "+ t.getLocalizedMessage());
+                TextBeeUtils.logException(t, "Error registering device");
+                registerDeviceBtn.setEnabled(true);
+                registerDeviceBtn.setText("Update");
+            }
+        });
     }
 
     private void handleUpdateDevice() {
@@ -654,104 +697,91 @@ public class MainActivity extends AppCompatActivity {
         registerDeviceBtn.setText("Loading...");
         View view = findViewById(R.id.registerDeviceBtn);
 
-        FirebaseMessaging.getInstance().getToken()
-                .addOnCompleteListener(task -> {
-                    if (!task.isSuccessful()) {
-                        Snackbar.make(view, "Failed to obtain FCM Token :(", Snackbar.LENGTH_LONG).show();
-                        registerDeviceBtn.setEnabled(true);
-                        registerDeviceBtn.setText("Update");
-                        return;
-                    }
-                    String token = task.getResult();
-                    fcmTokenEditText.setText(token);
+        RegisterDeviceInputDTO updateDeviceInput = new RegisterDeviceInputDTO();
+        updateDeviceInput.setEnabled(true);
+        updateDeviceInput.setBrand(Build.BRAND);
+        updateDeviceInput.setManufacturer(Build.MANUFACTURER);
+        updateDeviceInput.setModel(Build.MODEL);
+        updateDeviceInput.setBuildId(Build.ID);
+        updateDeviceInput.setOs(Build.VERSION.BASE_OS);
+        updateDeviceInput.setAppVersionCode(BuildConfig.VERSION_CODE);
+        updateDeviceInput.setAppVersionName(BuildConfig.VERSION_NAME);
 
-                    RegisterDeviceInputDTO updateDeviceInput = new RegisterDeviceInputDTO();
-                    updateDeviceInput.setEnabled(true);
-                    updateDeviceInput.setFcmToken(token);
-                    updateDeviceInput.setBrand(Build.BRAND);
-                    updateDeviceInput.setManufacturer(Build.MANUFACTURER);
-                    updateDeviceInput.setModel(Build.MODEL);
-                    updateDeviceInput.setBuildId(Build.ID);
-                    updateDeviceInput.setOs(Build.VERSION.BASE_OS);
-                    updateDeviceInput.setAppVersionCode(BuildConfig.VERSION_CODE);
-                    updateDeviceInput.setAppVersionName(BuildConfig.VERSION_NAME);
+        // Get device name from input field or default to "brand model"
+        String deviceName = deviceNameEditText.getText().toString().trim();
+        if (deviceName.isEmpty()) {
+            deviceName = Build.BRAND + " " + Build.MODEL;
+        }
+        updateDeviceInput.setName(deviceName);
 
-                    // Get device name from input field or default to "brand model"
-                    String deviceName = deviceNameEditText.getText().toString().trim();
-                    if (deviceName.isEmpty()) {
-                        deviceName = Build.BRAND + " " + Build.MODEL;
-                    }
-                    updateDeviceInput.setName(deviceName);
+        // Collect SIM information
+        SimInfoCollectionDTO simInfoCollection = new SimInfoCollectionDTO();
+        simInfoCollection.setLastUpdated(System.currentTimeMillis());
+        simInfoCollection.setSims(TextBeeUtils.collectSimInfo(mContext));
+        updateDeviceInput.setSimInfo(simInfoCollection);
 
-                    // Collect SIM information
-                    SimInfoCollectionDTO simInfoCollection = new SimInfoCollectionDTO();
-                    simInfoCollection.setLastUpdated(System.currentTimeMillis());
-                    simInfoCollection.setSims(TextBeeUtils.collectSimInfo(mContext));
-                    updateDeviceInput.setSimInfo(simInfoCollection);
+        Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService(mContext).updateDevice(deviceIdToUse, apiKey, updateDeviceInput);
+        apiCall.enqueue(new Callback<RegisterDeviceResponseDTO>() {
+            @Override
+            public void onResponse(Call<RegisterDeviceResponseDTO> call, Response<RegisterDeviceResponseDTO> response) {
+                Log.d(TAG, response.toString());
+                if (!response.isSuccessful()) {
+                    Snackbar.make(view, extractErrorMessage(response), Snackbar.LENGTH_LONG).show();
+                    registerDeviceBtn.setEnabled(true);
+                    registerDeviceBtn.setText("Update");
+                    return;
+                }
+                SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_API_KEY_KEY, apiKey);
 
-                    Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService().updateDevice(deviceIdToUse, apiKey, updateDeviceInput);
-                    apiCall.enqueue(new Callback<RegisterDeviceResponseDTO>() {
-                        @Override
-                        public void onResponse(Call<RegisterDeviceResponseDTO> call, Response<RegisterDeviceResponseDTO> response) {
-                            Log.d(TAG, response.toString());
-                            if (!response.isSuccessful()) {
-                                Snackbar.make(view, extractErrorMessage(response), Snackbar.LENGTH_LONG).show();
-                                registerDeviceBtn.setEnabled(true);
-                                registerDeviceBtn.setText("Update");
-                                return;
-                            }
-                            SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_API_KEY_KEY, apiKey);
-                            
-                            // Update deviceId from response if available
-                            if (response.body() != null && response.body().data != null && response.body().data.get("_id") != null) {
-                                deviceId = response.body().data.get("_id").toString();
-                                SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_ID_KEY, deviceId);
-                                deviceIdTxt.setText(deviceId);
-                                deviceIdEditText.setText(deviceId);
-                                
-                                // Sync heartbeatIntervalMinutes from server response
-                                if (response.body().data.get("heartbeatIntervalMinutes") != null) {
-                                    Object intervalObj = response.body().data.get("heartbeatIntervalMinutes");
-                                    if (intervalObj instanceof Number) {
-                                        int intervalMinutes = ((Number) intervalObj).intValue();
-                                        SharedPreferenceHelper.setSharedPreferenceInt(mContext, AppConstants.SHARED_PREFS_HEARTBEAT_INTERVAL_MINUTES_KEY, intervalMinutes);
-                                        Log.d(TAG, "Synced heartbeat interval from server: " + intervalMinutes + " minutes");
-                                    }
-                                }
-                                
-                                // Sync device name from server response
-                                if (response.body().data.get("name") != null) {
-                                    String deviceName = response.body().data.get("name").toString();
-                                    SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_NAME_KEY, deviceName);
-                                    deviceNameEditText.setText(deviceName);
-                                    Log.d(TAG, "Synced device name from server: " + deviceName);
-                                }
-                                
-                                // Schedule heartbeat if device is enabled
-                                if (updateDeviceInput.isEnabled()) {
-                                    HeartbeatManager.scheduleHeartbeat(mContext);
-                                }
-                            }
-                            
-                            // Update stored version information
-                            VersionTracker.updateStoredVersion(mContext);
-                            
-                            Snackbar.make(view, "Device Updated Successfully :)", Snackbar.LENGTH_LONG).show();
-                            registerDeviceBtn.setEnabled(true);
-                            registerDeviceBtn.setText("Update");
+                // Update deviceId from response if available
+                if (response.body() != null && response.body().data != null && response.body().data.get("_id") != null) {
+                    deviceId = response.body().data.get("_id").toString();
+                    SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_ID_KEY, deviceId);
+                    deviceIdTxt.setText(deviceId);
+                    deviceIdEditText.setText(deviceId);
+
+                    // Sync heartbeatIntervalMinutes from server response
+                    if (response.body().data.get("heartbeatIntervalMinutes") != null) {
+                        Object intervalObj = response.body().data.get("heartbeatIntervalMinutes");
+                        if (intervalObj instanceof Number) {
+                            int intervalMinutes = ((Number) intervalObj).intValue();
+                            SharedPreferenceHelper.setSharedPreferenceInt(mContext, AppConstants.SHARED_PREFS_HEARTBEAT_INTERVAL_MINUTES_KEY, intervalMinutes);
+                            Log.d(TAG, "Synced heartbeat interval from server: " + intervalMinutes + " minutes");
                         }
+                    }
 
-                        @Override
-                        public void onFailure(Call<RegisterDeviceResponseDTO> call, Throwable t) {
-                            Snackbar.make(view, "An error occurred :(", Snackbar.LENGTH_LONG).show();
-                            Log.e(TAG, "API_ERROR "+ t.getMessage());
-                            Log.e(TAG, "API_ERROR "+ t.getLocalizedMessage());
-                            TextBeeUtils.logException(t, "Error updating device");
-                            registerDeviceBtn.setEnabled(true);
-                            registerDeviceBtn.setText("Update");
-                        }
-                    });
-                });
+                    // Sync device name from server response
+                    if (response.body().data.get("name") != null) {
+                        String deviceName = response.body().data.get("name").toString();
+                        SharedPreferenceHelper.setSharedPreferenceString(mContext, AppConstants.SHARED_PREFS_DEVICE_NAME_KEY, deviceName);
+                        deviceNameEditText.setText(deviceName);
+                        Log.d(TAG, "Synced device name from server: " + deviceName);
+                    }
+
+                    // Schedule heartbeat if device is enabled
+                    if (updateDeviceInput.isEnabled()) {
+                        HeartbeatManager.scheduleHeartbeat(mContext);
+                    }
+                }
+
+                // Update stored version information
+                VersionTracker.updateStoredVersion(mContext);
+
+                Snackbar.make(view, "Device Updated Successfully :)", Snackbar.LENGTH_LONG).show();
+                registerDeviceBtn.setEnabled(true);
+                registerDeviceBtn.setText("Update");
+            }
+
+            @Override
+            public void onFailure(Call<RegisterDeviceResponseDTO> call, Throwable t) {
+                Snackbar.make(view, "An error occurred :(", Snackbar.LENGTH_LONG).show();
+                Log.e(TAG, "API_ERROR "+ t.getMessage());
+                Log.e(TAG, "API_ERROR "+ t.getLocalizedMessage());
+                TextBeeUtils.logException(t, "Error updating device");
+                registerDeviceBtn.setEnabled(true);
+                registerDeviceBtn.setText("Update");
+            }
+        });
     }
 
     private void handleRequestPermissions(View view) {

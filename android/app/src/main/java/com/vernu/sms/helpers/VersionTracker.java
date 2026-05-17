@@ -88,7 +88,7 @@ public class VersionTracker {
         updateInput.setAppVersionCode(BuildConfig.VERSION_CODE);
         updateInput.setAppVersionName(BuildConfig.VERSION_NAME);
         
-        Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService()
+        Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService(context)
                 .updateDevice(deviceId, apiKey, updateInput);
         
         apiCall.enqueue(new Callback<RegisterDeviceResponseDTO>() {
