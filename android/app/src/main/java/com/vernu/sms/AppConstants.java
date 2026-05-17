@@ -8,7 +8,6 @@ public class AppConstants {
     public static final String[] API_BASE_URL_HOST_ALLOWLIST = new String[]{};
     public static final String[] requiredPermissions = new String[]{
             Manifest.permission.SEND_SMS,
-            Manifest.permission.READ_SMS,
             Manifest.permission.RECEIVE_SMS,
             Manifest.permission.READ_PHONE_STATE
     };

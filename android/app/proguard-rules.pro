@@ -19,3 +19,14 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Gson/Retrofit keep rules
+-keepattributes Signature
+-keepattributes *Annotation*
+-keepclassmembers class * {
+    @retrofit2.http.* <methods>;
+}
+-keep class com.vernu.sms.services.** { *; }
+-keep class com.vernu.sms.dtos.** { *; }
+-keep class com.vernu.sms.models.** { *; }
+-keep class androidx.security.crypto.** { *; }

@@ -77,7 +77,7 @@ public class BootCompletedReceiver extends BroadcastReceiver {
         updateInput.setAppVersionCode(BuildConfig.VERSION_CODE);
         updateInput.setAppVersionName(BuildConfig.VERSION_NAME);
 
-        Log.d(TAG, "Updating device info after boot - deviceId: " + deviceId);
+        Log.d(TAG, "Updating device info after boot");
 
         ApiManager.getApiService(context)
             .updateDevice(deviceId, apiKey, updateInput)

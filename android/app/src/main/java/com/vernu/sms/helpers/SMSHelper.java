@@ -185,8 +185,8 @@ public class SMSHelper {
         intent.putExtra("sms_batch_id", smsBatchId);
         
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            flags |= PendingIntent.FLAG_MUTABLE;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
         }
         
         // Use a unique request code to avoid PendingIntent collisions
@@ -202,8 +202,8 @@ public class SMSHelper {
         intent.putExtra("sms_batch_id", smsBatchId);
         
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            flags |= PendingIntent.FLAG_MUTABLE;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
         }
         
         // Use a unique request code to avoid PendingIntent collisions

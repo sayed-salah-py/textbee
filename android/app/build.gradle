@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    compileSdk 32
+    compileSdk 34
 
     defaultConfig {
         minSdk 24
-        targetSdk 32
+        targetSdk 34
         versionCode 17
         versionName "2.7.1"
 
@@ -26,14 +26,33 @@ android {
             keyAlias "androiddebugkey"
             keyPassword "android"
         }
+        release {
+            def releaseStoreFile = System.getenv("RELEASE_STORE_FILE")
+            def releaseStorePassword = System.getenv("RELEASE_STORE_PASSWORD")
+            def releaseKeyAlias = System.getenv("RELEASE_KEY_ALIAS")
+            def releaseKeyPassword = System.getenv("RELEASE_KEY_PASSWORD")
+            if (releaseStoreFile != null) {
+                storeFile file(releaseStoreFile)
+            }
+            if (releaseStorePassword != null) {
+                storePassword releaseStorePassword
+            }
+            if (releaseKeyAlias != null) {
+                keyAlias releaseKeyAlias
+            }
+            if (releaseKeyPassword != null) {
+                keyPassword releaseKeyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
+            debuggable false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // TODO: Change to release signing config
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
         }
         debug {
             minifyEnabled false
@@ -84,6 +103,7 @@ dependencies {
     implementation 'com.journeyapps:zxing-android-embedded:4.1.0'
     
     implementation 'androidx.work:work-runtime:2.7.1'
+    implementation 'androidx.security:security-crypto:1.0.0'
 
 //    def room_version = "2.4.2"
 //    implementation "androidx.room:room-runtime:$room_version"

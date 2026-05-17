@@ -3,6 +3,7 @@ package com.vernu.sms.activities;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import android.Manifest;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -42,7 +43,9 @@ import com.vernu.sms.helpers.HeartbeatManager;
 import com.google.gson.Gson;
 import okhttp3.ResponseBody;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -129,7 +132,7 @@ public class MainActivity extends AppCompatActivity {
             registerDeviceBtn.setText("Update");
         }
 
-        String[] missingPermissions = Arrays.stream(AppConstants.requiredPermissions).filter(permission -> !TextBeeUtils.isPermissionGranted(mContext, permission)).toArray(String[]::new);
+        String[] missingPermissions = Arrays.stream(getRequiredPermissions()).filter(permission -> !TextBeeUtils.isPermissionGranted(mContext, permission)).toArray(String[]::new);
         if (missingPermissions.length == 0) {
             grantSMSPermissionBtn.setEnabled(false);
             grantSMSPermissionBtn.setText("Permission Granted");
@@ -225,6 +228,13 @@ public class MainActivity extends AppCompatActivity {
         stickyNotificationSwitch.setChecked(SharedPreferenceHelper.getSharedPreferenceBoolean(mContext, AppConstants.SHARED_PREFS_STICKY_NOTIFICATION_ENABLED_KEY, false));
         stickyNotificationSwitch.setOnCheckedChangeListener((compoundButton, isChecked) -> {
             View view = compoundButton.getRootView();
+            if (isChecked && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                !TextBeeUtils.isPermissionGranted(mContext, Manifest.permission.POST_NOTIFICATIONS)) {
+                compoundButton.setChecked(false);
+                Snackbar.make(view, "Notification permission required for sticky service", Snackbar.LENGTH_LONG).show();
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.POST_NOTIFICATIONS}, PERMISSION_REQUEST_CODE);
+                return;
+            }
             SharedPreferenceHelper.setSharedPreferenceBoolean(mContext, AppConstants.SHARED_PREFS_STICKY_NOTIFICATION_ENABLED_KEY, isChecked);
             
             if (isChecked) {
@@ -555,7 +565,7 @@ public class MainActivity extends AppCompatActivity {
                     
         // If the user provided a device ID, use it for updating instead of creating new
         if (!deviceIdInput.isEmpty()) {
-            Log.d(TAG, "Updating device with deviceId: "+ deviceIdInput);
+            Log.d(TAG, "Updating device with existing device ID");
             Call<RegisterDeviceResponseDTO> apiCall = ApiManager.getApiService(mContext).updateDevice(deviceIdInput, newKey, registerDeviceInput);
             apiCall.enqueue(new Callback<RegisterDeviceResponseDTO>() {
                 @Override
@@ -785,14 +795,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void handleRequestPermissions(View view) {
-        boolean allPermissionsGranted = Arrays.stream(AppConstants.requiredPermissions).allMatch(permission -> TextBeeUtils.isPermissionGranted(mContext, permission));
+        boolean allPermissionsGranted = Arrays.stream(getRequiredPermissions()).allMatch(permission -> TextBeeUtils.isPermissionGranted(mContext, permission));
         if (allPermissionsGranted) {
             Snackbar.make(view, "Already got permissions", Snackbar.LENGTH_SHORT).show();
             return;
         }
-        String[] permissionsToRequest = Arrays.stream(AppConstants.requiredPermissions).filter(permission -> !TextBeeUtils.isPermissionGranted(mContext, permission)).toArray(String[]::new);
+        String[] permissionsToRequest = Arrays.stream(getRequiredPermissions()).filter(permission -> !TextBeeUtils.isPermissionGranted(mContext, permission)).toArray(String[]::new);
         Snackbar.make(view, "Please Grant Required Permissions to continue", Snackbar.LENGTH_SHORT).show();
         ActivityCompat.requestPermissions(this, permissionsToRequest, PERMISSION_REQUEST_CODE);
+    }
+
+    private String[] getRequiredPermissions() {
+        List<String> permissions = new ArrayList<>(Arrays.asList(AppConstants.requiredPermissions));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        return permissions.toArray(new String[0]);
     }
 
     @Override

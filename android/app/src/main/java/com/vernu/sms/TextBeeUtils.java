@@ -42,6 +42,11 @@ public class TextBeeUtils {
         if(!isPermissionGranted(context, Manifest.permission.RECEIVE_SMS)){
             return;
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                !isPermissionGranted(context, Manifest.permission.POST_NOTIFICATIONS)) {
+            Log.i(TAG, "Notification permission not granted, cannot start sticky service");
+            return;
+        }
         
         // Only start service if user has enabled sticky notification
         boolean stickyNotificationEnabled = SharedPreferenceHelper.getSharedPreferenceBoolean(

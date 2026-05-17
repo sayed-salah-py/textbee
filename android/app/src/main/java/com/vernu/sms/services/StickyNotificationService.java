@@ -75,7 +75,7 @@ public class StickyNotificationService extends Service {
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         NotificationChannel channel = null;
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            channel = new NotificationChannel(notificationChannelId, notificationChannelId, NotificationManager.IMPORTANCE_HIGH);
+            channel = new NotificationChannel(notificationChannelId, notificationChannelId, NotificationManager.IMPORTANCE_LOW);
             channel.enableVibration(false);
             channel.setShowBadge(false);
             notificationManager.createNotificationChannel(channel);
@@ -86,6 +86,7 @@ public class StickyNotificationService extends Service {
             Notification.Builder builder = new Notification.Builder(this, notificationChannelId);
             return builder.setContentTitle("TextBee Active")
                     .setContentText("SMS gateway service is active")
+                    .setCategory(Notification.CATEGORY_SERVICE)
                     .setContentIntent(pendingIntent)
                     .setOngoing(true)
                     .setSmallIcon(R.mipmap.ic_launcher)
@@ -94,6 +95,7 @@ public class StickyNotificationService extends Service {
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this, notificationChannelId);
             return builder.setContentTitle("TextBee Active")
                     .setContentText("SMS gateway service is active")
+                    .setCategory(NotificationCompat.CATEGORY_SERVICE)
                     .setOngoing(true)
                     .setSmallIcon(R.mipmap.ic_launcher)
                     .build();
